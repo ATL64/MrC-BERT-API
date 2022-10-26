@@ -1,0 +1,91 @@
+version: 2.1
+
+orbs:
+  gcp-gcr: circleci/gcp-gcr@0.7.1
+  gcp-cli: circleci/gcp-cli@1.8.4
+  docker: circleci/docker@1.2.1
+
+jobs:
+  build-and-push-pr:
+    executor: gcp-gcr/default
+    steps:
+      - checkout
+      - gcp-gcr/gcr-auth
+      - gcp-gcr/build-image:
+          image: qa-bert-api-mrc
+          registry-url: eu.gcr.io
+      - gcp-gcr/push-image:
+          digest-path: /tmp/digest.txt
+          image: qa-bert-api-mrc
+          registry-url: eu.gcr.io
+      - run:
+          command: |
+            echo "Digest is: $(</tmp/digest.txt)"
+      - run:
+          command: gcloud compute instances list | grep qa-bert-api | awk '{printf "gcloud compute instances delete %s --zone %s\n", $1, $2}' > deleter.txt || true
+      - run:
+          command: $(head deleter.txt) || true
+      - run:
+          command: sleep 10s # Just making sure it is deleted before re creating
+      - run: #  --metadata=GCLOUD_SERVICE_ACCOUNT=$GCLOUD_SERVICE_ACCOUNT \
+          command: |
+                  gcloud compute instances create qa-bert-api \
+                  --container-image eu.gcr.io/durable-catbird-204706/qa-bert-api-mrc:latest \
+                  --zone europe-west3-a \
+                  --machine-type n1-standard-4 \
+                  --image ubuntu-1804-bionic-v20200626 \
+                  --image-project ubuntu-os-cloud \
+                  --boot-disk-size 15GB \
+                  --address 35.234.66.105 \
+                  --tags http-server,https-server \
+                  --metadata-from-file=startup-script=self-destruct.sh \
+                  --service-account dash-cicd@xxxxxxxxxxxxx.iam.gserviceaccount.com \
+                  --scopes=compute-rw,storage-ro
+  build-and-deploy:
+      executor: gcp-gcr/default
+      steps:
+        - checkout
+        - gcp-gcr/gcr-auth
+        - gcp-gcr/build-image:
+            image: prod-bert-api-mrc
+            registry-url: eu.gcr.io
+        - gcp-gcr/push-image:
+            digest-path: /tmp/digest.txt
+            image: prod-bert-api-mrc
+            registry-url: eu.gcr.io
+        - run:
+            command: |
+              echo "Digest is: $(</tmp/digest.txt)"
+        - run:
+            command: gcloud compute instances list | grep prod-bert-api | awk '{printf "gcloud compute instances delete %s --zone %s\n", $1, $2}' > masterdeleter.txt || true
+        - run:
+            command: echo "$(cat masterdeleter.txt)"
+        - run:
+            command: $(cat masterdeleter.txt) || true
+        - run:
+            command: |
+                  gcloud compute instances create-with-container prod-bert-api \
+                  --container-image eu.gcr.io/durable-catbird-204706/prod-bert-api-mrc:latest \
+                  --zone europe-west3-a \
+                  --machine-type n1-standard-4 \
+                  --image ubuntu-1804-bionic-v20200626 \
+                  --image-project ubuntu-os-cloud \
+                  --boot-disk-size 15GB \
+                  --address 34.107.125.243 \
+                  --tags http-server,https-server \
+workflows:
+  version: 2
+  qa-pr-machine:
+    jobs:
+      - build-and-push-pr:
+          filters:
+            branches:
+              ignore:
+                - master
+  merge-master:
+    jobs:
+      - build-and-deploy:
+          filters:
+            branches:
+              only:
+                - master
