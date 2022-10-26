@@ -3,6 +3,10 @@
 This repo contains code for a small service in docker that provides a REST API for evaluating questions and abstracts with [DistilBERT](https://arxiv.org/abs/1910.01108)
 using abstracts from the PubMed database as source of knowledge.
 
+![Alt text](/mrc_example.png?raw=true "App_frontend")
+
+App frontend code available in separate repository.
+
 The request needs to be a POST request as follows:
 
 ``http://<ip_address_of_vm>:5000/question-pubmed``,
@@ -71,3 +75,9 @@ and to start it again, type
 
 To view the logs,
 ``docker-compose logs --tail=30``.
+
+
+
+## Mention
+
+Developed together with Alejandro de Miquel https://github.com/alejandrodemiquel
